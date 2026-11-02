@@ -45,6 +45,12 @@ export function balance(o: { total: number; deposit: number; paidOnPickup: numbe
   return o.total - o.deposit - o.paidOnPickup;
 }
 
+/** ¿Es la misma persona? Compara el nombre de pila sin acentos ("Enzo Dalmazo" ≈ "enzo dalmasso"). */
+export function sameName(a: string | null | undefined, b: string | null | undefined) {
+  const first = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().split(/\s+/)[0];
+  return Boolean(a?.trim() && b?.trim()) && first(a!) === first(b!);
+}
+
 /** Normaliza teléfonos argentinos a solo dígitos, sin 0 ni 15 (ej: 03471-15687792 → 3471687792). */
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;

@@ -2,7 +2,7 @@ import { and, desc, eq, ilike, inArray } from "drizzle-orm";
 import { interpret, transcribe } from "./ai";
 import { db } from "./db";
 import { botDrafts, clients, orders, priceItems, telegramUpdates, users, type User } from "./db/schema";
-import { balance, itemLabel, money, normalizePhone, STATUS_LABELS, ticket } from "./format";
+import { balance, itemLabel, money, normalizePhone, sameName, STATUS_LABELS, ticket } from "./format";
 import { changeStatus, computeLines, createOrder, getOrder } from "./orders";
 import type { ParsedMessage } from "./parser";
 import { depositProblem } from "./pricing";
@@ -138,7 +138,8 @@ async function draftSummary(p: DraftPayload) {
   const total = lines.reduce((s, l) => s + l.subtotal, 0);
   const deposit = p.paidInFull ? total : p.deposit;
   const phone = normalizePhone(p.phone);
-  const existing = phone ? await db.query.clients.findFirst({ where: eq(clients.phone, phone) }) : null;
+  const samePhone = phone ? await db.query.clients.findMany({ where: eq(clients.phone, phone) }) : [];
+  const existing = samePhone.find((c) => !p.clientName || sameName(c.name, p.clientName));
   const out = [
     "<b>📝 Nueva orden</b>",
     `👤 ${h(p.clientName ?? "¿Nombre?")}${existing ? " <i>(cliente existente)</i>" : ""}`,

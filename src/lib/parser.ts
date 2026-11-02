@@ -76,8 +76,25 @@ function otherGarment(seg: string, s: string, prices: PriceItem[]): ParsedItem {
   return { priceItemId: null, description, quantity, unitPrice: unitPrice && unitPrice >= 100 ? unitPrice : null };
 }
 
+// Muletillas de los audios que van antes del nombre: "Hola, te dejo un pedido de Lucas Fernández".
+const NAME_FILLERS = [
+  /^(?:hola|buenas(?:\s+(?:tardes|noches))?|buen\s+d[ií]a)\b[,.!\s]*/i,
+  /^(?:te\s+)?(?:dejo|paso|cargo|anot[aá])?\s*(?:un|el|una|la)?\s*(?:pedido|orden)\s*(?:de|para|a nombre de)?\s+/i,
+  /^(?:a nombre de|de parte de|para|cliente(?:\s+es)?|el cliente es|se llama|nombre)[:\s]+/i,
+];
+
+function cleanName(s: string) {
+  let out = s.trim();
+  for (const re of NAME_FILLERS) out = out.replace(re, "").trim();
+  return out.replace(/[.,;:!]+$/, "").trim();
+}
+
+// Palabras que delatan que el segmento no es un nombre ("su teléfono es", "paga todo").
+const NOT_A_NAME = /\b(tel[eé]fono|tel|cel(?:ular)?|se[nñ]a|paga|pago|abona|total|kilos?|kg|plazas?|orden|lista)\b/i;
+
 export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
-  const raw = text.trim();
+  // "10.000 pesos": la palabra pesos sobra y se confundiría con un nombre.
+  const raw = text.trim().replace(/\s*\bpesos\b/gi, "");
   const t = strip(raw);
   const result: ParsedMessage = {
     intent: "nueva_orden",
@@ -133,16 +150,21 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
   }
 
   const nameParts: string[] = [];
+  // "para Lucas Fernández un acolchado…": el nombre viene marcado y en mayúsculas (así lo escribe la transcripción).
+  const marked = rest.match(/(?:^|[\s,.])(?:[Pp]ara|[Aa] nombre de|[Dd]e parte de|[Cc]liente)\s+((?:\p{Lu}[\p{L}'’]+\s*){1,4})/u);
+  if (marked) nameParts.push(marked[1].trim());
+
   // "Enzo Dalmazo lleva una frazada…": lo que va antes del verbo es el cliente.
   const verb = rest.match(/^\s*([^\d,;\n]{3,60}?)\s+(?:lleva|llev[oó]|deja|dej[oó]|trae|traj[oó])\s+/i);
-  if (verb && verb[1].trim().split(/\s+/).length <= 4) {
-    nameParts.push(verb[1].trim());
+  if (verb && cleanName(verb[1]).split(/\s+/).length <= 4) {
+    nameParts.push(cleanName(verb[1]));
     rest = rest.slice(verb[0].length);
   }
 
   const segments = rest
+    // Los audios transcriptos separan con puntos ("Lucas Fernández. Un acolchado."): punto seguido de espacio, no "10.000".
     // "y"/"más" separan prendas solo si sigue una cantidad ("1 acolchado negro y gris y 5 kg de ropa").
-    .split(/[,\n;]+|\s+(?:y|mas|más)\s+(?=(?:\d|un\b|una\b|uno\b|dos\b|tres\b|cuatro\b|cinco\b|seis\b))/i)
+    .split(/[,\n;]+|\.(?=\s|$)|\s+(?:y|mas|más)\s+(?=(?:\d|un\b|una\b|uno\b|dos\b|tres\b|cuatro\b|cinco\b|seis\b))/i)
     .map((s) => s.trim())
     .filter(Boolean);
 
@@ -156,9 +178,9 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
     const rule = RULES.find((r) => r.test.test(s));
     const item = rule?.pick(prices);
     if (!item) {
-      const named = seg.match(/(?:nombre|cliente|a nombre de)[:\s]+(.+)/i);
-      if (named) nameParts.push(named[1]);
-      else if (!/\d/.test(s) && s.split(/\s+/).length <= 4) nameParts.push(seg);
+      const candidate = cleanName(seg);
+      if (candidate.length >= 3 && !/\d/.test(candidate) && !NOT_A_NAME.test(candidate) && candidate.split(/\s+/).length <= 4)
+        nameParts.push(candidate);
       continue;
     }
     let quantity = 1;
@@ -173,12 +195,8 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
     result.items.push({ priceItemId: item.id, description: colors ? colors.join(" ") : null, quantity, unitPrice: null });
   }
 
-  if (nameParts.length) {
-    result.clientName = nameParts[0]
-      .replace(/^(hola|buenas|buen dia)[,!\s]*/i, "")
-      .trim()
-      .replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase());
-  }
+  const name = nameParts.map(cleanName).find((n) => n.length >= 3);
+  if (name) result.clientName = name.replace(/(^|\s)\p{L}/gu, (c) => c.toUpperCase());
   if (!result.items.length) result.intent = result.clientName || result.phone ? "nueva_orden" : "otro";
   return result;
 }

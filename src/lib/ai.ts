@@ -73,6 +73,8 @@ ${list}
 
 Reglas:
 - "nueva_orden": alguien deja ropa. clientName = nombre y apellido del cliente; phone = teléfono tal cual lo dijeron.
+- El cliente puede ser nuevo: usá el nombre que dijeron aunque no lo conozcas. Puede venir después de "para", "a nombre de",
+  "cliente", "pedido de", o antes de "trae/deja/lleva". Sin saludos ni muletillas ("hola", "te dejo un pedido de").
 - Cada prenda va en items con el priceItemId de la lista. Para "Ropa por kg" quantity = kilos (si no dicen el peso, usá el mínimo y anotalo en notes).
 - description: solo detalles para reconocer la prenda (colores, marca, estado). No repitas el nombre del ítem.
 - Abreviaturas del cuaderno: "ac" = acolchado, "1p"/"2p" = 1 o 2 plazas, "fr" = frazada.
@@ -106,10 +108,18 @@ export async function interpret(text: string, prices: PriceItem[]): Promise<Pars
     const data = (await res.json()) as { choices: { message: { content: string } }[] };
     const parsed = aiSchema.parse(JSON.parse(data.choices[0].message.content));
     const validIds = new Set(prices.map((p) => p.id));
+    // Lo que la IA deje vacío (ej. el nombre de un cliente nuevo) lo completan las reglas.
+    const rules = parseByRules(text, prices);
+    const paidInFull = parsed.paidInFull || rules.paidInFull;
     return {
       ...parsed,
-      phone: normalizePhone(parsed.phone),
-      items: parsed.items.map((i) => ({ ...i, priceItemId: i.priceItemId && validIds.has(i.priceItemId) ? i.priceItemId : null })),
+      clientName: parsed.clientName ?? rules.clientName,
+      phone: normalizePhone(parsed.phone) ?? rules.phone,
+      items: parsed.items.length
+        ? parsed.items.map((i) => ({ ...i, priceItemId: i.priceItemId && validIds.has(i.priceItemId) ? i.priceItemId : null }))
+        : rules.items,
+      deposit: paidInFull ? 0 : parsed.deposit || rules.deposit,
+      paidInFull,
       engine: "ia",
     };
   } catch (e) {

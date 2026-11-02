@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq, ilike, inArray } from "drizzle-orm";
 import { db } from "./db";
 import { clients, orderItems, orders, priceItems, users, type OrderStatus } from "./db/schema";
-import { balance, money, normalizePhone, ticket } from "./format";
+import { balance, money, normalizePhone, sameName, ticket } from "./format";
 import { HttpError } from "./api";
 import { sendToClient, type SendResult } from "./messaging";
 import { computeLine, depositProblem, type LineInput } from "./pricing";
@@ -23,8 +23,10 @@ export async function findOrCreateClient(input: ClientInput) {
   const phone = normalizePhone(input.phone);
   const name = input.name?.trim();
   if (phone) {
-    const byPhone = await db.query.clients.findFirst({ where: eq(clients.phone, phone) });
-    if (byPhone) return byPhone;
+    // Un mismo teléfono puede ser de la familia: si dijeron otro nombre, es otro cliente.
+    const byPhone = await db.query.clients.findMany({ where: eq(clients.phone, phone) });
+    const match = name ? byPhone.find((c) => sameName(c.name, name)) : byPhone[0];
+    if (match) return match;
   } else if (name) {
     const byName = await db.query.clients.findFirst({ where: ilike(clients.name, name) });
     if (byName) return byName;

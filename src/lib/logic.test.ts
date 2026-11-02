@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PriceItem } from "./db/schema";
-import { balance, itemLabel, normalizePhone, whatsappLink } from "./format";
+import { balance, itemLabel, normalizePhone, sameName, whatsappLink } from "./format";
 import { parseByRules } from "./parser";
 import { computeLine, depositProblem } from "./pricing";
 
@@ -55,6 +55,12 @@ describe("teléfonos", () => {
   it("no repite la cantidad en prendas por kilo", () => {
     expect(itemLabel({ quantity: 8, description: "Ropa por kg 8 kg" })).toBe("Ropa por kg 8 kg");
     expect(itemLabel({ quantity: 2, description: "Campera" })).toBe("2 × Campera");
+  });
+  it("reconoce a la misma persona por el nombre de pila", () => {
+    expect(sameName("Enzo Dalmasso", "enzo dalmazo")).toBe(true);
+    expect(sameName("Ángela Ruiz", "Angela")).toBe(true);
+    expect(sameName("Enzo Dalmasso", "Lucas Fernández")).toBe(false);
+    expect(sameName("Enzo", null)).toBe(false);
   });
   it("arma link de WhatsApp con 549", () => {
     expect(whatsappLink("3471687792", "hola")).toBe("https://wa.me/5493471687792?text=hola");
@@ -111,6 +117,20 @@ describe("parser por reglas", () => {
     const r = parseByRules("Enzo Dalmasso 3471314256 trae 2 acolchados de 2 plazas, paga todo", PRICES);
     expect(r).toMatchObject({ clientName: "Enzo Dalmasso", paidInFull: true, deposit: 0 });
     expect(r.items).toEqual([expect.objectContaining({ priceItemId: 2, quantity: 2 })]);
+  });
+  it.each([
+    "Lucas Fernández. 3471 22 33 44. Un acolchado de dos plazas. Seña 10 mil.",
+    "Hola, te dejo un pedido de Lucas Fernández, 3471 223344, un acolchado de dos plazas, seña 10 mil.",
+    "Para Lucas Fernández un acolchado de dos plazas, seña de 10.000 pesos, teléfono 3471223344.",
+    "Cliente Lucas Fernández, teléfono 3471 223344. Un acolchado de dos plazas. Seña 10 mil.",
+    "Buenas tardes. Lucas Fernández trajo un acolchado de dos plazas. Dejó 10.000 de seña. Su teléfono es 3471 223344.",
+  ])("nombre de cliente nuevo en audio transcripto: %s", (t) => {
+    expect(parseByRules(t, PRICES)).toMatchObject({
+      clientName: "Lucas Fernández",
+      phone: "3471223344",
+      deposit: 10000,
+      items: [expect.objectContaining({ priceItemId: 2 })],
+    });
   });
   it("abreviaturas del cuaderno", () => {
     const r = parseByRules("Mercedes Lazo, 1 ac 2p azul, 1 ac 1p verde", PRICES);
