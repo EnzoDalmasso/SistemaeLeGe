@@ -13,7 +13,8 @@
     "bot:poll": "tsx scripts/poll-telegram.ts",
     "test": "vitest run",
     "db:demo": "tsx scripts/demo-data.ts",
-    "bot:simulate": "tsx scripts/simulate-bot.ts"
+    "bot:simulate": "tsx scripts/simulate-bot.ts",
+    "vercel-build": "drizzle-kit migrate && tsx scripts/seed.ts && next build"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

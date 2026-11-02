@@ -53,9 +53,9 @@ Sin API key el sistema igual funciona: interpreta mensajes escritos con reglas y
 1. Subir esta carpeta (`web/`) a un repositorio de GitHub.
 2. En [vercel.com](https://vercel.com) → **Add New Project** → importar el repo.
 3. En el proyecto → **Storage** → **Neon (Postgres)** → crear base gratis. Vercel agrega `DATABASE_URL` sola.
-4. En **Settings → Environment Variables** cargar `AUTH_SECRET`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `AI_*`.
-5. Desde la PC, con la URL de Neon en `.env.local`: `npm run db:migrate` y `npm run db:seed` (una sola vez).
-6. Deploy. Entrar como admin → Configuración → **Conectar bot a este servidor** (registra el webhook de Telegram).
+4. En **Settings → Environment Variables** cargar `AUTH_SECRET`, `SEED_PASSWORD`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `AI_*`.
+5. Deploy. El script `vercel-build` crea/actualiza las tablas y carga precios y usuarios en cada deploy (sin pisar datos existentes).
+6. Entrar como admin → Configuración → **Conectar bot a este servidor** (registra el webhook de Telegram).
 
 ## Pasar a producción (cuando aprueben)
 
