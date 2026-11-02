@@ -10,10 +10,11 @@ export const aiEnabled = () => Boolean(process.env.AI_API_KEY);
 // Extensiones que acepta Whisper. Las notas de voz de Telegram llegan como .oga (es ogg/opus).
 const AUDIO_EXT: Record<string, string> = { oga: "ogg", ogg: "ogg", opus: "opus", mp3: "mp3", m4a: "m4a", mp4: "mp4", wav: "wav", webm: "webm", flac: "flac", mpeg: "mpeg", mpga: "mpga" };
 
-// Vocabulario del lavadero: orienta a Whisper con la ortografía y forma de hablar del mostrador.
+// Vocabulario del lavadero: orienta a Whisper con la ortografía del mostrador. Sin nombres ni teléfonos de ejemplo:
+// con audio bajo o con ruido, Whisper tiende a "copiar" la pista y devolvería un cliente inventado.
 const AUDIO_HINT =
-  "Lavadero eLeGe. Ana Pérez, 3471 555123, trae un acolchado de 2 plazas, una frazada de plaza y media, un acolchado de plumón, " +
-  "una campera, una almohada y 4 kilos de ropa. Deja 10 mil de seña, paga todo, 15 lucas. La orden 12 está lista.";
+  "Lavadero eLeGe. Vocabulario: acolchado de 1 plaza, acolchado de 2 plazas, plumón, frazada de plaza y media, campera, almohada, " +
+  "kilos de ropa, seña, paga todo, mil, lucas, teléfono 3471, orden lista, entregada.";
 
 export async function transcribe(audio: ArrayBuffer, filename: string, hint = ""): Promise<string> {
   if (!aiEnabled()) throw new Error("Para entender audios hay que configurar AI_API_KEY");

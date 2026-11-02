@@ -12,8 +12,11 @@ export function VoiceButton({ onText, onError }: { onText: (text: string) => voi
 
   async function start() {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream);
+      // En PC el micrófono suele estar lejos y bajo: pedimos limpieza de ruido y ganancia automática, en mono.
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      });
+      const rec = new MediaRecorder(stream, { audioBitsPerSecond: 128000 });
       const chunks: Blob[] = [];
       rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
       rec.onstop = async () => {
