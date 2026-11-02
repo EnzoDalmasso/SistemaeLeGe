@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { IconTrash } from "@/components/icons";
 import { useUser } from "@/components/shell";
 import { Button, Card, ErrorBox, Field, inputCls, Loading, Modal, PageHeader } from "@/components/ui";
 import { api, useApi } from "@/lib/client";
@@ -19,6 +20,21 @@ export default function PricesPage() {
   const [form, setForm] = useState<Form | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  async function remove() {
+    if (!form?.id || !confirm(`¿Eliminar "${form.name}" de la lista de precios? Las órdenes ya cargadas no cambian.`)) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api(`/api/prices/${form.id}`, { method: "DELETE" });
+      setForm(null);
+      reload();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (error) return <ErrorBox>{error}</ErrorBox>;
   if (!data) return <Loading />;
@@ -148,6 +164,11 @@ export default function PricesPage() {
             <Button className="w-full" loading={saving} onClick={save}>
               Guardar
             </Button>
+            {form.id && (
+              <Button variant="danger" className="w-full" disabled={saving} onClick={remove}>
+                <IconTrash /> Eliminar
+              </Button>
+            )}
           </div>
         )}
       </Modal>

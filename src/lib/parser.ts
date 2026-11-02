@@ -17,6 +17,8 @@ export type ParsedMessage = {
   phone: string | null;
   items: ParsedItem[];
   deposit: number;
+  /** "Paga todo": la seña es el importe completo (lo calcula quien arma la orden). */
+  paidInFull: boolean;
   paidAmount: number | null;
   notes: string | null;
 };
@@ -44,12 +46,30 @@ const RULES: Rule[] = [
 // Prendas que no están en el cartel: van como línea con precio manual.
 const OTHER_GARMENTS = /\b(frazadas?|mantas?|cortinas?|sabanas?|manteles?|mantel|cubrecamas?|colchas?|edredon(es)?|toallas?|alfombras?|almohadones?|fundas?)\b/;
 
-function otherGarment(seg: string, s: string): ParsedItem {
+// Medida dicha en el mensaje → cómo suele aparecer en el nombre del precio ("Frazada 1½ plaza").
+const SIZES: { said: RegExp; named: RegExp }[] = [
+  { said: /plaza y media|1\s*(?:½|1\/2|y media)/, named: /½|1\s*1\/2|media/ },
+  { said: /\b(?:2|dos)\s*plazas?\b|\b2p\b|matrimonial/, named: /\b2\b|dos/ },
+  { said: /\b(?:1|una|un)\s*plaza\b|\b1p\b/, named: /\b1\s*plaza|una plaza/ },
+];
+
+/** Si la prenda se cargó en Precios (ej. "Frazada 1½ plaza"), usa ese precio en vez de dejarla sin precio. */
+function listedGarment(s: string, word: string, prices: PriceItem[]) {
+  const root = word.replace(/(?<=[ln])es$|s$/, "");
+  const candidates = prices.filter((p) => strip(`${p.name} ${p.keywords ?? ""}`).includes(root));
+  if (candidates.length <= 1) return candidates[0];
+  const size = SIZES.find((z) => z.said.test(s));
+  return (size && candidates.find((p) => size.named.test(strip(p.name)))) || candidates[0];
+}
+
+function otherGarment(seg: string, s: string, prices: PriceItem[]): ParsedItem {
   const lead = s.match(/^(\d+|un|una|uno|dos|tres|cuatro|cinco|seis)\s+/);
   const quantity = lead ? (/^\d+$/.test(lead[1]) ? Number(lead[1]) : NUMBER_WORDS[lead[1]] ?? 1) : 1;
   // "a 14 mil", "$14000", "por 14.000"
   const price = s.match(/(?:\ba|\$|\bpor)\s*\$?\s*(\d[\d.,]*)\s*(mil|lucas?|k\b)?/);
   const unitPrice = price ? parseAmount(price[1]) * (price[2] ? 1000 : 1) : null;
+  const listed = listedGarment(s, s.match(OTHER_GARMENTS)![1], prices);
+  if (listed) return { priceItemId: listed.id, description: null, quantity, unitPrice: unitPrice && unitPrice >= 100 ? unitPrice : null };
   let description = seg.slice(lead ? lead[0].length : 0);
   if (price?.index !== undefined) description = description.slice(0, price.index - (lead ? lead[0].length : 0));
   description = description.trim().replace(/^\p{L}/u, (c) => c.toUpperCase());
@@ -66,6 +86,7 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
     phone: null,
     items: [],
     deposit: 0,
+    paidInFull: false,
     paidAmount: null,
     notes: null,
   };
@@ -94,7 +115,12 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
     ...t.matchAll(new RegExp(String.raw`(?:sena|entrega|deja|dejo|adelant\w*|a cuenta)\s*(?:de|con)?\s*${AMOUNT}`, "g")),
   ].find((m) => amountOf(m) >= 100);
   let rest = raw;
-  if (deposit && deposit.index !== undefined) {
+  // "paga todo", "pagó el total", "pago completo": la seña es el importe entero.
+  const full = t.match(/\b(?:paga|pago|abona|abono)\s+(?:todo|el total|total|completo)\b|\btodo pago\b/);
+  if (full?.index !== undefined) {
+    result.paidInFull = true;
+    rest = raw.slice(0, full.index) + " " + raw.slice(full.index + full[0].length);
+  } else if (deposit && deposit.index !== undefined) {
     result.deposit = amountOf(deposit);
     rest = raw.slice(0, deposit.index) + " " + raw.slice(deposit.index + deposit[0].length);
   }
@@ -124,7 +150,7 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
     const s = strip(seg);
     // Antes que las reglas: "frazada de 2 plazas" no es un acolchado de 2 plazas.
     if (OTHER_GARMENTS.test(s)) {
-      result.items.push(otherGarment(seg, s));
+      result.items.push(otherGarment(seg, s, prices));
       continue;
     }
     const rule = RULES.find((r) => r.test.test(s));

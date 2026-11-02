@@ -8,7 +8,7 @@ import { VoiceButton } from "@/components/voice-button";
 import { api, useApi } from "@/lib/client";
 import type { PriceItem } from "@/lib/db/schema";
 import { money } from "@/lib/format";
-import { computeLine, priceLabel } from "@/lib/pricing";
+import { computeLine, depositProblem, priceLabel } from "@/lib/pricing";
 
 type Line = { key: number; priceItemId: number | null; quantity: string; unitPrice: string; description: string };
 type ClientHit = { id: number; name: string; phone: string | null; orders: number };
@@ -17,6 +17,7 @@ type Parsed = {
   phone: string | null;
   items: { priceItemId: number | null; description: string | null; quantity: number; unitPrice: number | null }[];
   deposit: number;
+  paidInFull: boolean;
   notes: string | null;
   engine: "ia" | "reglas";
   existingClient: { id: number; name: string; phone: string | null } | null;
@@ -39,6 +40,7 @@ export default function NewOrderPage() {
   const [hits, setHits] = useState<ClientHit[]>([]);
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [deposit, setDeposit] = useState("");
+  const [paidInFull, setPaidInFull] = useState(false);
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -56,7 +58,7 @@ export default function NewOrderPage() {
     return computeLine(item, { quantity: num(l.quantity) ?? 1, unitPrice: num(l.unitPrice), description: l.description });
   });
   const total = computed.reduce((s, l) => s + l.subtotal, 0);
-  const dep = num(deposit) ?? 0;
+  const dep = paidInFull ? total : num(deposit) ?? 0;
 
   async function interpret(text = raw) {
     if (text.trim().length < 3) return;
@@ -77,6 +79,7 @@ export default function NewOrderPage() {
           })),
         );
       setDeposit(r.deposit ? String(r.deposit) : "");
+      setPaidInFull(r.paidInFull);
       setNotes(r.notes ?? "");
       setParseInfo(
         `${r.engine === "ia" ? "Interpretado con IA" : "Interpretado sin IA (reglas)"}${r.existingClient ? " · cliente existente encontrado" : ""}. Revisá los datos antes de guardar.`,
@@ -97,11 +100,13 @@ export default function NewOrderPage() {
       .filter((l) => l.priceItemId || l.description.trim())
       .map((l) => ({ priceItemId: l.priceItemId, quantity: num(l.quantity) ?? 1, unitPrice: num(l.unitPrice), description: l.description || null }));
     if (!items.length) return setError("Agregá al menos una prenda");
+    const problem = depositProblem(total, dep);
+    if (problem) return setError(problem);
     setSaving(true);
     try {
       const { id } = await api<{ id: number }>("/api/orders", {
         method: "POST",
-        json: { clientId: client.id, clientName: client.name, phone: client.phone || null, items, deposit: dep, notes: notes || null, rawMessage: raw || null },
+        json: { clientId: client.id, clientName: client.name, phone: client.phone || null, items, deposit: dep, paidInFull, notes: notes || null, rawMessage: raw || null },
       });
       router.push(`/ordenes/${id}`);
     } catch (e) {
@@ -274,12 +279,23 @@ export default function NewOrderPage() {
 
         <div className="xl:sticky xl:top-8 xl:self-start">
           <Card className="space-y-4 p-4">
-            <Field label="Seña / entrega" hint="Lo que deja ahora al traer la ropa">
+            <Field label="Seña / entrega" hint="Obligatoria: deja seña o paga todo al traer la ropa">
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">$</span>
-                <input className={`${inputCls} pl-7`} inputMode="numeric" value={deposit} onChange={(e) => setDeposit(e.target.value)} placeholder="0" />
+                <input
+                  className={`${inputCls} pl-7 disabled:opacity-60`}
+                  inputMode="numeric"
+                  value={paidInFull ? String(total) : deposit}
+                  onChange={(e) => setDeposit(e.target.value)}
+                  disabled={paidInFull}
+                  placeholder="0"
+                />
               </div>
             </Field>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" className="size-4 accent-brand" checked={paidInFull} onChange={(e) => setPaidInFull(e.target.checked)} />
+              Pagó todo
+            </label>
             <Field label="Observaciones">
               <textarea className={`${inputCls} min-h-16 py-2`} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Manchas, urgencia, etc." />
             </Field>

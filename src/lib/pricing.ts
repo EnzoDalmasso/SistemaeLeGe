@@ -1,4 +1,5 @@
 import type { PriceItem } from "./db/schema";
+import { money } from "./format";
 
 export type LineInput = {
   priceItemId?: number | null;
@@ -63,4 +64,12 @@ export function priceLabel(item: Pick<PriceItem, "unit" | "priceMin" | "priceMax
     return `${base} por kg${min}`;
   }
   return base;
+}
+
+/** Regla del lavadero: nadie deja ropa sin seña o sin pagar todo. Devuelve el motivo si no se cumple. */
+export function depositProblem(total: number, deposit: number) {
+  if (total <= 0) return "La orden no tiene importe: poné el precio de las prendas";
+  if (deposit <= 0) return "Falta la seña: el cliente tiene que dejar seña o pagar todo";
+  if (deposit > total) return `La seña (${money(deposit)}) no puede superar el importe (${money(total)})`;
+  return null;
 }

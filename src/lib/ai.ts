@@ -7,12 +7,23 @@ import { parseByRules, type ParsedMessage } from "./parser";
 const base = () => (process.env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 export const aiEnabled = () => Boolean(process.env.AI_API_KEY);
 
-export async function transcribe(audio: ArrayBuffer, filename: string): Promise<string> {
+// Extensiones que acepta Whisper. Las notas de voz de Telegram llegan como .oga (es ogg/opus).
+const AUDIO_EXT: Record<string, string> = { oga: "ogg", ogg: "ogg", opus: "opus", mp3: "mp3", m4a: "m4a", mp4: "mp4", wav: "wav", webm: "webm", flac: "flac", mpeg: "mpeg", mpga: "mpga" };
+
+// Vocabulario del lavadero: orienta a Whisper con la ortografía y forma de hablar del mostrador.
+const AUDIO_HINT =
+  "Lavadero eLeGe. Ana Pérez, 3471 555123, trae un acolchado de 2 plazas, una frazada de plaza y media, un acolchado de plumón, " +
+  "una campera, una almohada y 4 kilos de ropa. Deja 10 mil de seña, paga todo, 15 lucas. La orden 12 está lista.";
+
+export async function transcribe(audio: ArrayBuffer, filename: string, hint = ""): Promise<string> {
   if (!aiEnabled()) throw new Error("Para entender audios hay que configurar AI_API_KEY");
+  const ext = AUDIO_EXT[filename.split(".").pop()?.toLowerCase() ?? ""] ?? "ogg";
   const form = new FormData();
-  form.append("file", new Blob([audio]), filename);
-  form.append("model", process.env.AI_AUDIO_MODEL || "whisper-large-v3-turbo");
+  form.append("file", new Blob([audio]), `audio.${ext}`);
+  form.append("model", process.env.AI_AUDIO_MODEL || "whisper-large-v3");
   form.append("language", "es");
+  form.append("temperature", "0");
+  form.append("prompt", `${AUDIO_HINT} ${hint}`.trim().slice(0, 800));
   const res = await fetch(`${base()}/audio/transcriptions`, {
     method: "POST",
     headers: { authorization: `Bearer ${process.env.AI_API_KEY}` },
@@ -38,6 +49,7 @@ const aiSchema = z.object({
     )
     .catch([]),
   deposit: z.coerce.number().nonnegative().catch(0),
+  paidInFull: z.boolean().catch(false),
   paidAmount: z.coerce.number().nonnegative().nullable().catch(null),
   notes: z.string().nullable().catch(null),
 });
@@ -53,7 +65,7 @@ function systemPrompt(prices: PriceItem[]) {
 Extraé los datos y respondé SOLO un JSON con esta forma:
 {"intent":"nueva_orden|marcar_listo|marcar_entregado|otro","orderId":number|null,"clientName":string|null,"phone":string|null,
  "items":[{"priceItemId":number|null,"description":string|null,"quantity":number,"unitPrice":number|null}],
- "deposit":number,"paidAmount":number|null,"notes":string|null}
+ "deposit":number,"paidInFull":boolean,"paidAmount":number|null,"notes":string|null}
 
 Lista de precios:
 ${list}
@@ -66,6 +78,7 @@ Reglas:
 - Si la prenda no está en la lista (ej. frazada, cortina), priceItemId = null, description = qué es, y unitPrice solo si dijeron el precio.
 - unitPrice solo si dijeron un precio explícito para esa prenda; si no, null.
 - deposit = seña o "entrega" que dejó al traer la ropa (0 si no dijeron).
+- paidInFull = true si dijeron que paga/pagó todo, el total o completo al dejar la ropa (en ese caso deposit = 0).
 - "marcar_listo": avisan que una orden está lista (orderId = número de orden).
 - "marcar_entregado": el cliente retiró (orderId, paidAmount = lo que pagó al retirar si lo dicen).
 - Montos en pesos, como números enteros (ej. "quince mil" = 15000, "15 lucas" = 15000).

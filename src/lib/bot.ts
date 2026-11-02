@@ -5,6 +5,7 @@ import { botDrafts, clients, orders, priceItems, telegramUpdates, users, type Us
 import { balance, itemLabel, money, normalizePhone, STATUS_LABELS, ticket } from "./format";
 import { changeStatus, computeLines, createOrder, getOrder } from "./orders";
 import type { ParsedMessage } from "./parser";
+import { depositProblem } from "./pricing";
 import { clientLink, downloadFile, escapeHtml as h, sendMessage, tg } from "./telegram";
 
 type TgChat = { id: number; type: string; first_name?: string };
@@ -27,6 +28,7 @@ type DraftPayload = {
   phone: string | null;
   items: ParsedMessage["items"];
   deposit: number;
+  paidInFull?: boolean;
   notes: string | null;
   rawMessage: string;
 };
@@ -34,6 +36,7 @@ type DraftPayload = {
 const HELP = `<b>Bot del Lavadero eLeGe</b>
 Mandá un <b>audio o mensaje</b> con los datos de la ropa que dejan, por ejemplo:
 <i>"Ana Pérez, 3471 555123, un acolchado de 1 plaza negro y gris y 4 kilos de ropa, dejó 10 mil de seña"</i>
+Siempre decí la <b>seña</b> o que <b>paga todo</b>: sin eso no se crea la orden.
 
 También podés decir <i>"la orden 12 está lista"</i> (se le avisa al cliente) o <i>"la orden 12 la retiró y pagó 15 mil"</i>.
 
@@ -89,17 +92,17 @@ async function handleStaffMessage(staff: User, msg: TgMessage, text: string) {
     return markDelivered(chatId, id, cmd[3] ? Number(cmd[3].replace(/\./g, "")) : null);
   }
 
+  const prices = await db.select().from(priceItems).where(eq(priceItems.active, true));
   let content = text;
   const voice = msg.voice ?? msg.audio;
   if (voice) {
     await tg("sendChatAction", { chat_id: chatId, action: "typing" });
     const file = await downloadFile(voice.file_id);
-    content = await transcribe(file.data, file.path.split("/").pop() || "audio.ogg");
+    content = await transcribe(file.data, file.path.split("/").pop() || "audio.ogg", prices.map((p) => p.name).join(", "));
     await sendMessage(chatId, `🎙️ <i>${h(content)}</i>`);
   }
   if (!content) return sendMessage(chatId, HELP);
 
-  const prices = await db.select().from(priceItems).where(eq(priceItems.active, true));
   const parsed = await interpret(content, prices);
 
   if (parsed.intent === "marcar_listo" && parsed.orderId) return markReady(chatId, parsed.orderId);
@@ -113,15 +116,17 @@ async function handleStaffMessage(staff: User, msg: TgMessage, text: string) {
     phone: parsed.phone,
     items: parsed.items,
     deposit: parsed.deposit,
+    paidInFull: parsed.paidInFull,
     notes: parsed.notes,
     rawMessage: content,
   };
   const [draft] = await db.insert(botDrafts).values({ chatId, userId: staff.id, payload }).returning();
-  const summary = await draftSummary(payload);
-  const canConfirm = Boolean(payload.clientName) && payload.items.length > 0;
+  const { text: summary, problem } = await draftSummary(payload);
+  const missing = !payload.clientName || !payload.items.length ? "Falta el nombre del cliente o las prendas" : problem;
+  const canConfirm = !missing;
   await sendMessage(
     chatId,
-    summary + (canConfirm ? "" : "\n\n⚠️ Falta el nombre del cliente o las prendas. Mandá el mensaje de nuevo completo."),
+    summary + (missing ? `\n\n⚠️ ${h(missing)}. Mandá el mensaje de nuevo completo (ej: <i>"…, seña 10 mil"</i> o <i>"…, paga todo"</i>).` : ""),
     canConfirm
       ? [[{ text: "✅ Confirmar", callback_data: `ok:${draft.id}` }, { text: "❌ Cancelar", callback_data: `no:${draft.id}` }]]
       : undefined,
@@ -131,6 +136,7 @@ async function handleStaffMessage(staff: User, msg: TgMessage, text: string) {
 async function draftSummary(p: DraftPayload) {
   const lines = await computeLines(p.items.map((i) => ({ ...i })));
   const total = lines.reduce((s, l) => s + l.subtotal, 0);
+  const deposit = p.paidInFull ? total : p.deposit;
   const phone = normalizePhone(p.phone);
   const existing = phone ? await db.query.clients.findFirst({ where: eq(clients.phone, phone) }) : null;
   const out = [
@@ -141,10 +147,10 @@ async function draftSummary(p: DraftPayload) {
     ...lines.map((l) => `• ${h(itemLabel(l))} — ${money(l.subtotal)}${l.unitPrice === 0 ? " ⚠️ sin precio" : ""}`),
     "",
     `<b>Importe: ${money(total)}</b>`,
-    `Seña: ${money(p.deposit)} · Saldo: ${money(total - p.deposit)}`,
+    p.paidInFull ? "✅ Pagó todo" : `Seña: ${money(deposit)} · Saldo: ${money(total - deposit)}`,
   ];
   if (p.notes) out.push(`📌 ${h(p.notes)}`);
-  return out.join("\n");
+  return { text: out.join("\n"), problem: depositProblem(total, deposit) };
 }
 
 async function handleCallback(cb: NonNullable<TgUpdate["callback_query"]>) {
@@ -171,6 +177,7 @@ async function handleCallback(cb: NonNullable<TgUpdate["callback_query"]>) {
     client: { name: p.clientName, phone: p.phone },
     items: p.items,
     deposit: p.deposit,
+    paidInFull: p.paidInFull,
     notes: p.notes,
     source: "telegram",
     rawMessage: p.rawMessage,

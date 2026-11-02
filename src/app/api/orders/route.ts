@@ -58,6 +58,7 @@ const createSchema = z.object({
   phone: z.string().trim().max(40).nullable().optional(),
   items: z.array(itemSchema).min(1, "Agregá al menos una prenda"),
   deposit: z.number().int().nonnegative().default(0),
+  paidInFull: z.boolean().default(false),
   notes: z.string().max(1000).nullable().optional(),
   rawMessage: z.string().max(4000).nullable().optional(),
 });
@@ -68,6 +69,7 @@ export const POST = route(async (req, _ctx, user) => {
     client: { clientId: body.clientId, name: body.clientName, phone: body.phone },
     items: body.items,
     deposit: body.deposit,
+    paidInFull: body.paidInFull,
     notes: body.notes,
     rawMessage: body.rawMessage,
     source: "panel",

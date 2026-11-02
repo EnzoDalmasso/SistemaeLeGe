@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PriceItem } from "./db/schema";
 import { balance, itemLabel, normalizePhone, whatsappLink } from "./format";
 import { parseByRules } from "./parser";
-import { computeLine } from "./pricing";
+import { computeLine, depositProblem } from "./pricing";
 
 const p = (o: Partial<PriceItem>): PriceItem => ({
   id: 0, category: "", name: "", unit: "unidad", priceMin: 0, priceMax: null, minCharge: null,
@@ -32,6 +32,13 @@ describe("precios", () => {
   });
   it("prenda fuera de lista usa el precio indicado", () => {
     expect(computeLine(null, { quantity: 2, unitPrice: 9000, description: "Frazada" })).toMatchObject({ subtotal: 18000, description: "Frazada" });
+  });
+  it("exige seña o pago total", () => {
+    expect(depositProblem(30000, 0)).toMatch(/Falta la seña/);
+    expect(depositProblem(30000, 40000)).toMatch(/no puede superar/);
+    expect(depositProblem(0, 5000)).toMatch(/no tiene importe/);
+    expect(depositProblem(30000, 5000)).toBeNull();
+    expect(depositProblem(30000, 30000)).toBeNull();
   });
   it("saldo = importe − seña − abonado", () => {
     expect(balance({ total: 40000, deposit: 20000, paidOnPickup: 5000 })).toBe(15000);
@@ -92,6 +99,18 @@ describe("parser por reglas", () => {
       { priceItemId: null, description: "Frazadas de 2 plazas", quantity: 2, unitPrice: 14000 },
       expect.objectContaining({ priceItemId: 1, quantity: 1 }),
     ]);
+  });
+  it("usa la frazada cargada en Precios según la medida", () => {
+    const withFr = [...PRICES, p({ id: 7, name: "Frazada 1½ plaza", priceMin: 13000 }), p({ id: 8, name: "Frazada 2 plazas", priceMin: 15000 })];
+    expect(parseByRules("Enzo Dalmazo lleva una frazada de una plaza y media, seña 5 mil", withFr).items).toEqual([
+      { priceItemId: 7, description: null, quantity: 1, unitPrice: null },
+    ]);
+    expect(parseByRules("Juan Paz deja 2 frazadas de 2 plazas, paga todo", withFr).items[0]).toMatchObject({ priceItemId: 8, quantity: 2 });
+  });
+  it("entiende que paga todo", () => {
+    const r = parseByRules("Enzo Dalmasso 3471314256 trae 2 acolchados de 2 plazas, paga todo", PRICES);
+    expect(r).toMatchObject({ clientName: "Enzo Dalmasso", paidInFull: true, deposit: 0 });
+    expect(r.items).toEqual([expect.objectContaining({ priceItemId: 2, quantity: 2 })]);
   });
   it("abreviaturas del cuaderno", () => {
     const r = parseByRules("Mercedes Lazo, 1 ac 2p azul, 1 ac 1p verde", PRICES);

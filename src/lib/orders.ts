@@ -5,7 +5,7 @@ import { clients, orderItems, orders, priceItems, users, type OrderStatus } from
 import { balance, money, normalizePhone, ticket } from "./format";
 import { HttpError } from "./api";
 import { sendToClient, type SendResult } from "./messaging";
-import { computeLine, type LineInput } from "./pricing";
+import { computeLine, depositProblem, type LineInput } from "./pricing";
 import { getSettings } from "./settings";
 import { escapeHtml, sendMessage, telegramEnabled } from "./telegram";
 
@@ -44,6 +44,8 @@ export type CreateOrderInput = {
   client: ClientInput;
   items: LineInput[];
   deposit?: number;
+  /** Pagó todo al dejar la ropa: la seña pasa a ser el importe. */
+  paidInFull?: boolean;
   notes?: string | null;
   source?: "panel" | "telegram" | "whatsapp";
   rawMessage?: string | null;
@@ -52,9 +54,12 @@ export type CreateOrderInput = {
 
 export async function createOrder(input: CreateOrderInput) {
   if (!input.items.length) throw new HttpError(400, "La orden no tiene prendas");
-  const client = await findOrCreateClient(input.client);
   const lines = await computeLines(input.items);
   const total = lines.reduce((s, l) => s + l.subtotal, 0);
+  const deposit = input.paidInFull ? total : Math.round(input.deposit ?? 0);
+  const problem = depositProblem(total, deposit);
+  if (problem) throw new HttpError(400, problem);
+  const client = await findOrCreateClient(input.client);
 
   return db.transaction(async (tx) => {
     const [order] = await tx
@@ -62,7 +67,7 @@ export async function createOrder(input: CreateOrderInput) {
       .values({
         clientId: client.id,
         total,
-        deposit: Math.max(0, Math.round(input.deposit ?? 0)),
+        deposit,
         notes: input.notes?.trim() || null,
         source: input.source ?? "panel",
         rawMessage: input.rawMessage ?? null,

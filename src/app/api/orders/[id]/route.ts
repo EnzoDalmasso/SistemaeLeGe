@@ -21,7 +21,7 @@ export const GET = route<Ctx>(async (_req, { params }) => detail(idParam((await 
 const patchSchema = z.object({
   status: z.enum(ORDER_STATUSES).optional(),
   paidOnPickup: z.number().int().nonnegative().optional(),
-  deposit: z.number().int().nonnegative().optional(),
+  deposit: z.number().int().positive("La seña es obligatoria").optional(),
   notes: z.string().max(1000).nullable().optional(),
   markNotified: z.literal(true).optional(),
 });
