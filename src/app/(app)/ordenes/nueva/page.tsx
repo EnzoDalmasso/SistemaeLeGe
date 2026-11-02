@@ -108,11 +108,26 @@ export default function NewOrderPage() {
         method: "POST",
         json: { clientId: client.id, clientName: client.name, phone: client.phone || null, items, deposit: dep, paidInFull, notes: notes || null, rawMessage: raw || null },
       });
+      // Next conserva el estado de esta pantalla al volver: queda limpia para el próximo pedido.
+      reset();
       router.push(`/ordenes/${id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
       setSaving(false);
     }
+  }
+
+  function reset() {
+    setRaw("");
+    setParseInfo(null);
+    setClient({ id: null, name: "", phone: "" });
+    setHits([]);
+    setLines([emptyLine()]);
+    setDeposit("");
+    setPaidInFull(false);
+    setNotes("");
+    setError(null);
+    setSaving(false);
   }
 
   const categories = [...new Set(active.map((p) => p.category))];
