@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { Logo } from "@/components/icons";
+import { QrCode } from "@/components/qr-code";
 import { Loading } from "@/components/ui";
 import { useApi } from "@/lib/client";
 import { fmtDate, itemLabel, money, ticket } from "@/lib/format";
@@ -11,11 +12,12 @@ type Detail = {
   total: number;
   deposit: number;
   receivedAt: string;
-  client: { name: string; phone: string | null };
+  client: { name: string; phone: string | null; telegramChatId: number | null };
   items: { id: number; description: string; quantity: number }[];
+  telegramLink: string | null;
 };
 
-function Half({ o, who }: { o: Detail; who: string }) {
+function Half({ o, who, qr }: { o: Detail; who: string; qr?: boolean }) {
   return (
     <div className="flex-1 p-5 text-[13px] leading-relaxed">
       <div className="flex items-start justify-between">
@@ -54,6 +56,15 @@ function Half({ o, who }: { o: Detail; who: string }) {
         <span className="min-w-28 border-2 border-ink px-2 py-1 text-right text-base font-bold">{money(o.total)}</span>
       </div>
       {o.deposit > 0 && <p className="mt-1 text-right text-xs">Seña: {money(o.deposit)} · Saldo: {money(o.total - o.deposit)}</p>}
+      {qr && o.telegramLink && !o.client.telegramChatId && (
+        <div className="mt-3 flex items-center gap-3 rounded border border-ink p-2">
+          <QrCode value={o.telegramLink} className="size-24 shrink-0" />
+          <p className="text-[11px] leading-snug">
+            <b>¿Querés que te avisemos cuando esté lista?</b> Escaneá el código con la cámara del celular y tocá <b>«Iniciar»</b> en
+            Telegram.
+          </p>
+        </div>
+      )}
       <div className="mt-3 text-center text-[11px]">
         <p className="font-bold underline">IMPORTANTE</p>
         <p>La Empresa no se responsabiliza por daños o pérdidas. Pasados los 30 días del primer aviso perderá todo derecho a reclamo.</p>
@@ -79,7 +90,7 @@ export default function TicketPage() {
         </button>
       </div>
       <div className="flex flex-col border border-ink sm:flex-row">
-        <Half o={o} who="Copia cliente" />
+        <Half o={o} who="Copia cliente" qr />
         <div className="border-t border-dashed border-ink sm:border-l sm:border-t-0" />
         <Half o={o} who="Copia lavadero" />
       </div>
