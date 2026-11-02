@@ -79,6 +79,20 @@ describe("parser por reglas", () => {
     });
     expect(parseByRules("Juan Paz, 2 camperas, deja 15 mil", PRICES).deposit).toBe(15000);
   });
+  it("frase natural con prenda fuera de la lista", () => {
+    const r = parseByRules("Enzo Dalmazo lleva una frazada de una plaza y media, 3471 687792", PRICES);
+    expect(r).toMatchObject({ intent: "nueva_orden", clientName: "Enzo Dalmazo", phone: "3471687792" });
+    expect(r.items).toEqual([{ priceItemId: null, description: "Frazada de una plaza y media", quantity: 1, unitPrice: null }]);
+  });
+  it("prenda fuera de lista con precio dicho y cantidad tras 'deja'", () => {
+    const r = parseByRules("Juan Paz 3471 112233 deja 2 frazadas de 2 plazas a 14 mil y 1 acolchado 1 plaza", PRICES);
+    expect(r.clientName).toBe("Juan Paz");
+    expect(r.deposit).toBe(0);
+    expect(r.items).toEqual([
+      { priceItemId: null, description: "Frazadas de 2 plazas", quantity: 2, unitPrice: 14000 },
+      expect.objectContaining({ priceItemId: 1, quantity: 1 }),
+    ]);
+  });
   it("abreviaturas del cuaderno", () => {
     const r = parseByRules("Mercedes Lazo, 1 ac 2p azul, 1 ac 1p verde", PRICES);
     expect(r.items.map((i) => i.priceItemId)).toEqual([2, 1]);

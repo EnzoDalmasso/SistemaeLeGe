@@ -41,6 +41,21 @@ const RULES: Rule[] = [
   { test: /\d\s*(kg|kilos?)\b|\bropa\b|\bbolsa/, pick: (i) => i.find((p) => p.unit === "kg") },
 ];
 
+// Prendas que no están en el cartel: van como línea con precio manual.
+const OTHER_GARMENTS = /\b(frazadas?|mantas?|cortinas?|sabanas?|manteles?|mantel|cubrecamas?|colchas?|edredon(es)?|toallas?|alfombras?|almohadones?|fundas?)\b/;
+
+function otherGarment(seg: string, s: string): ParsedItem {
+  const lead = s.match(/^(\d+|un|una|uno|dos|tres|cuatro|cinco|seis)\s+/);
+  const quantity = lead ? (/^\d+$/.test(lead[1]) ? Number(lead[1]) : NUMBER_WORDS[lead[1]] ?? 1) : 1;
+  // "a 14 mil", "$14000", "por 14.000"
+  const price = s.match(/(?:\ba|\$|\bpor)\s*\$?\s*(\d[\d.,]*)\s*(mil|lucas?|k\b)?/);
+  const unitPrice = price ? parseAmount(price[1]) * (price[2] ? 1000 : 1) : null;
+  let description = seg.slice(lead ? lead[0].length : 0);
+  if (price?.index !== undefined) description = description.slice(0, price.index - (lead ? lead[0].length : 0));
+  description = description.trim().replace(/^\p{L}/u, (c) => c.toUpperCase());
+  return { priceItemId: null, description, quantity, unitPrice: unitPrice && unitPrice >= 100 ? unitPrice : null };
+}
+
 export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
   const raw = text.trim();
   const t = strip(raw);
@@ -72,12 +87,15 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
 
   // "seña 10000", "deja 10 mil", "10.000 de seña". strip() conserva la longitud, así que los índices sirven sobre el texto original.
   const AMOUNT = String.raw`\$?\s*(\d[\d.,]*)\s*(mil|lucas?|k\b)?`;
-  const deposit =
-    t.match(new RegExp(String.raw`(?:deja|dejo)?\s*${AMOUNT}\s*(?:de\s*)?(?:sena|adelanto)`)) ??
-    t.match(new RegExp(String.raw`(?:sena|entrega|deja|dejo|adelant\w*|a cuenta)\s*(?:de|con)?\s*${AMOUNT}`));
+  const amountOf = (m: RegExpMatchArray) => parseAmount(m[1]) * (m[2] ? 1000 : 1);
+  // Montos chicos no son seña: "deja 2 acolchados" es una cantidad.
+  const deposit = [
+    ...t.matchAll(new RegExp(String.raw`(?:deja|dejo)?\s*${AMOUNT}\s*(?:de\s*)?(?:sena|adelanto)`, "g")),
+    ...t.matchAll(new RegExp(String.raw`(?:sena|entrega|deja|dejo|adelant\w*|a cuenta)\s*(?:de|con)?\s*${AMOUNT}`, "g")),
+  ].find((m) => amountOf(m) >= 100);
   let rest = raw;
   if (deposit && deposit.index !== undefined) {
-    result.deposit = parseAmount(deposit[1]) * (deposit[2] ? 1000 : 1);
+    result.deposit = amountOf(deposit);
     rest = raw.slice(0, deposit.index) + " " + raw.slice(deposit.index + deposit[0].length);
   }
 
@@ -88,15 +106,27 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
     rest = rest.replace(phoneMatch[0], " ");
   }
 
+  const nameParts: string[] = [];
+  // "Enzo Dalmazo lleva una frazada…": lo que va antes del verbo es el cliente.
+  const verb = rest.match(/^\s*([^\d,;\n]{3,60}?)\s+(?:lleva|llev[oó]|deja|dej[oó]|trae|traj[oó])\s+/i);
+  if (verb && verb[1].trim().split(/\s+/).length <= 4) {
+    nameParts.push(verb[1].trim());
+    rest = rest.slice(verb[0].length);
+  }
+
   const segments = rest
     // "y"/"más" separan prendas solo si sigue una cantidad ("1 acolchado negro y gris y 5 kg de ropa").
     .split(/[,\n;]+|\s+(?:y|mas|más)\s+(?=(?:\d|un\b|una\b|uno\b|dos\b|tres\b|cuatro\b|cinco\b|seis\b))/i)
     .map((s) => s.trim())
     .filter(Boolean);
 
-  const nameParts: string[] = [];
   for (const seg of segments) {
     const s = strip(seg);
+    // Antes que las reglas: "frazada de 2 plazas" no es un acolchado de 2 plazas.
+    if (OTHER_GARMENTS.test(s)) {
+      result.items.push(otherGarment(seg, s));
+      continue;
+    }
     const rule = RULES.find((r) => r.test.test(s));
     const item = rule?.pick(prices);
     if (!item) {
