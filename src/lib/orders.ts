@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
-import { and, eq, ilike, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "./db";
 import { clients, orderItems, orders, priceItems, users, type OrderStatus } from "./db/schema";
-import { balance, money, normalizePhone, sameName, ticket } from "./format";
+import { balance, money, nameKey, normalizePhone, sameName, ticket } from "./format";
 import { HttpError } from "./api";
 import { sendToClient, type SendResult } from "./messaging";
 import { computeLine, depositProblem, type LineInput } from "./pricing";
@@ -13,7 +13,26 @@ export const newLinkToken = () => randomBytes(9).toString("base64url");
 
 export type ClientInput = { clientId?: number | null; name?: string | null; phone?: string | null };
 
-/** Busca el cliente por id, por teléfono o por nombre exacto; si no existe lo crea. */
+/**
+ * Cliente ya cargado que corresponde a lo dicho. Por teléfono, si coincide el nombre de pila (un teléfono puede ser
+ * de toda la familia); si no, por cómo suena el nombre ("Dalmazo" = "Dalmasso"), salvo que tenga otro teléfono.
+ */
+export async function matchClient(name: string | null | undefined, phone: string | null) {
+  if (phone) {
+    const byPhone = await db.query.clients.findMany({ where: eq(clients.phone, phone) });
+    const match = name ? byPhone.find((c) => sameName(c.name, name)) : byPhone[0];
+    if (match) return match;
+  }
+  if (!name?.trim()) return undefined;
+  const key = nameKey(name);
+  if (key.length < 3) return undefined;
+  // Un lavadero tiene pocos miles de clientes: se comparan todos por la clave (la inicial puede variar: V/B, Z/S, H).
+  const all = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients);
+  const hit = all.find((c) => nameKey(c.name) === key && (!phone || !c.phone || c.phone === phone));
+  return hit ? db.query.clients.findFirst({ where: eq(clients.id, hit.id) }) : undefined;
+}
+
+/** Busca el cliente por id, por teléfono o por nombre; si no existe lo crea. */
 export async function findOrCreateClient(input: ClientInput) {
   if (input.clientId) {
     const c = await db.query.clients.findFirst({ where: eq(clients.id, input.clientId) });
@@ -22,15 +41,8 @@ export async function findOrCreateClient(input: ClientInput) {
   }
   const phone = normalizePhone(input.phone);
   const name = input.name?.trim();
-  if (phone) {
-    // Un mismo teléfono puede ser de la familia: si dijeron otro nombre, es otro cliente.
-    const byPhone = await db.query.clients.findMany({ where: eq(clients.phone, phone) });
-    const match = name ? byPhone.find((c) => sameName(c.name, name)) : byPhone[0];
-    if (match) return match;
-  } else if (name) {
-    const byName = await db.query.clients.findFirst({ where: ilike(clients.name, name) });
-    if (byName) return byName;
-  }
+  const match = await matchClient(name, phone);
+  if (match) return match;
   if (!name) throw new HttpError(400, "Falta el nombre del cliente");
   const [created] = await db.insert(clients).values({ name, phone, linkToken: newLinkToken() }).returning();
   return created;
@@ -146,4 +158,16 @@ export async function changeStatus(orderId: number, change: StatusChange) {
 
   const notification = change.status === "listo" ? await notifyReady(orderId) : null;
   return { order: await getOrder(orderId), notification };
+}
+
+/**
+ * Pista para la transcripción: prendas de la lista y nombres de clientes recientes, para que Whisper escriba
+ * "Dalmasso" y no "Dalmazo". Whisper solo mira el final de la pista: los clientes más recientes van al final.
+ */
+export async function audioHint() {
+  const [prices, recent] = await Promise.all([
+    db.select({ name: priceItems.name }).from(priceItems).where(eq(priceItems.active, true)),
+    db.select({ name: clients.name }).from(clients).orderBy(desc(clients.createdAt)).limit(25),
+  ]);
+  return `${prices.map((p) => p.name).join(", ")}. Clientes: ${recent.reverse().map((c) => c.name).join(", ")}.`;
 }

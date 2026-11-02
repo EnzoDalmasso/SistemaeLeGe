@@ -2,8 +2,8 @@ import { and, desc, eq, ilike, inArray } from "drizzle-orm";
 import { interpret, transcribe } from "./ai";
 import { db } from "./db";
 import { botDrafts, clients, orders, priceItems, telegramUpdates, users, type User } from "./db/schema";
-import { balance, itemLabel, money, normalizePhone, sameName, STATUS_LABELS, ticket } from "./format";
-import { changeStatus, computeLines, createOrder, getOrder } from "./orders";
+import { balance, itemLabel, money, normalizePhone, STATUS_LABELS, ticket } from "./format";
+import { audioHint, changeStatus, computeLines, createOrder, getOrder, matchClient } from "./orders";
 import type { ParsedMessage } from "./parser";
 import { depositProblem } from "./pricing";
 import { clientLink, downloadFile, escapeHtml as h, sendMessage, tg } from "./telegram";
@@ -98,7 +98,7 @@ async function handleStaffMessage(staff: User, msg: TgMessage, text: string) {
   if (voice) {
     await tg("sendChatAction", { chat_id: chatId, action: "typing" });
     const file = await downloadFile(voice.file_id);
-    content = await transcribe(file.data, file.path.split("/").pop() || "audio.ogg", prices.map((p) => p.name).join(", "));
+    content = await transcribe(file.data, file.path.split("/").pop() || "audio.ogg", await audioHint());
     await sendMessage(chatId, `🎙️ <i>${h(content)}</i>`);
   }
   if (!content) return sendMessage(chatId, HELP);
@@ -138,12 +138,12 @@ async function draftSummary(p: DraftPayload) {
   const total = lines.reduce((s, l) => s + l.subtotal, 0);
   const deposit = p.paidInFull ? total : p.deposit;
   const phone = normalizePhone(p.phone);
-  const samePhone = phone ? await db.query.clients.findMany({ where: eq(clients.phone, phone) }) : [];
-  const existing = samePhone.find((c) => !p.clientName || sameName(c.name, p.clientName));
+  // Se muestra como está cargado ("Dalmasso" aunque el audio diga "Dalmazo"): es el cliente al que va la orden.
+  const existing = await matchClient(p.clientName, phone);
   const out = [
     "<b>📝 Nueva orden</b>",
-    `👤 ${h(p.clientName ?? "¿Nombre?")}${existing ? " <i>(cliente existente)</i>" : ""}`,
-    `📞 ${h(phone ?? "sin teléfono")}`,
+    `👤 ${h(existing?.name ?? p.clientName ?? "¿Nombre?")}${existing ? " <i>(cliente existente)</i>" : ""}`,
+    `📞 ${h(phone ?? existing?.phone ?? "sin teléfono")}`,
     "",
     ...lines.map((l) => `• ${h(itemLabel(l))} — ${money(l.subtotal)}${l.unitPrice === 0 ? " ⚠️ sin precio" : ""}`),
     "",

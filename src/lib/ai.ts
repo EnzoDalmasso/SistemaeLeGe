@@ -24,7 +24,9 @@ export async function transcribe(audio: ArrayBuffer, filename: string, hint = ""
   form.append("model", process.env.AI_AUDIO_MODEL || "whisper-large-v3");
   form.append("language", "es");
   form.append("temperature", "0");
-  form.append("prompt", `${AUDIO_HINT} ${hint}`.trim().slice(0, 800));
+  // Whisper toma unos 224 tokens del final de la pista: se recorta por el principio, en un espacio.
+  const prompt = `${AUDIO_HINT} ${hint}`.trim();
+  form.append("prompt", prompt.length > 700 ? prompt.slice(prompt.indexOf(" ", prompt.length - 700) + 1) : prompt);
   const res = await fetch(`${base()}/audio/transcriptions`, {
     method: "POST",
     headers: { authorization: `Bearer ${process.env.AI_API_KEY}` },

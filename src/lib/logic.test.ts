@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PriceItem } from "./db/schema";
-import { balance, itemLabel, normalizePhone, sameName, whatsappLink } from "./format";
+import { balance, itemLabel, nameKey, normalizePhone, sameName, whatsappLink } from "./format";
 import { parseByRules } from "./parser";
 import { computeLine, depositProblem } from "./pricing";
 
@@ -61,6 +61,13 @@ describe("teléfonos", () => {
     expect(sameName("Ángela Ruiz", "Angela")).toBe(true);
     expect(sameName("Enzo Dalmasso", "Lucas Fernández")).toBe(false);
     expect(sameName("Enzo", null)).toBe(false);
+  });
+  it("compara nombres como suenan", () => {
+    expect(nameKey("Enzo Dalmazo")).toBe(nameKey("Enzo Dalmasso"));
+    expect(nameKey("Marta Bazquez")).toBe(nameKey("Marta Vázquez"));
+    expect(nameKey("Hector Gonzales")).toBe(nameKey("Héctor González"));
+    expect(nameKey("Lucía Yanes")).toBe(nameKey("Lucia Llanes"));
+    expect(nameKey("Enzo Dalmasso")).not.toBe(nameKey("Enzo Dalmau"));
   });
   it("arma link de WhatsApp con 549", () => {
     expect(whatsappLink("3471687792", "hola")).toBe("https://wa.me/5493471687792?text=hola");

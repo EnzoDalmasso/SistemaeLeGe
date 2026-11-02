@@ -58,7 +58,7 @@ function Half({ o, who, qr }: { o: Detail; who: string; qr?: boolean }) {
       {o.deposit > 0 && <p className="mt-1 text-right text-xs">Seña: {money(o.deposit)} · Saldo: {money(o.total - o.deposit)}</p>}
       {qr && o.telegramLink && !o.client.telegramChatId && (
         <div className="mt-3 flex items-center gap-3 rounded border border-ink p-2">
-          <QrCode value={o.telegramLink} className="size-24 shrink-0" />
+          <QrCode value={o.telegramLink} className="size-32 shrink-0" />
           <p className="text-[11px] leading-snug">
             <b>¿Querés que te avisemos cuando esté lista?</b> Escaneá el código con la cámara del celular y tocá <b>«Iniciar»</b> en
             Telegram.

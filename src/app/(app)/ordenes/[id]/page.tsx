@@ -7,7 +7,7 @@ import { IconPrint, IconSend, IconWhatsapp } from "@/components/icons";
 import { QrCode } from "@/components/qr-code";
 import { Button, Card, ErrorBox, Field, inputCls, LinkButton, Loading, Modal, PageHeader, StatusBadge } from "@/components/ui";
 import { api, useApi } from "@/lib/client";
-import { balance, fmtDate, money, STATUS_LABELS, ticket } from "@/lib/format";
+import { balance, fmtDate, money, STATUS_LABELS, ticket, whatsappLink } from "@/lib/format";
 
 type Detail = {
   id: number;
@@ -212,7 +212,20 @@ export default function OrderDetailPage() {
             {!o.client.telegramChatId && o.telegramLink && (
               <div className="mt-3 rounded-xl bg-paper p-3 text-xs">
                 <p className="mb-2 text-ink-soft">Que el cliente escanee este código con el celular y toque «Iniciar», o mandale el link:</p>
-                <QrCode value={o.telegramLink} className="mx-auto mb-3 size-40 rounded-lg" />
+                <QrCode value={o.telegramLink} className="mx-auto mb-3 size-56 max-w-full" />
+                {o.client.phone && (
+                  <LinkButton
+                    external
+                    variant="secondary"
+                    className="mb-3 w-full"
+                    href={whatsappLink(
+                      o.client.phone,
+                      `Hola ${o.client.name.split(" ")[0]}! Para que te avisemos cuando tu ropa esté lista, tocá este link y apretá «Iniciar»: ${o.telegramLink}`,
+                    )}
+                  >
+                    <IconWhatsapp /> Mandarle el link por WhatsApp
+                  </LinkButton>
+                )}
                 <div className="flex gap-2">
                   <input readOnly value={o.telegramLink} className="min-w-0 flex-1 rounded-lg border border-line bg-card px-2 py-1.5 font-mono text-[11px]" />
                   <button

@@ -51,6 +51,22 @@ export function sameName(a: string | null | undefined, b: string | null | undefi
   return Boolean(a?.trim() && b?.trim()) && first(a!) === first(b!);
 }
 
+/** Clave "como suena": Dalmazo = Dalmasso, Gonzalez = González, Bazquez = Vázquez. */
+export function nameKey(s: string) {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-zñ\s]/g, "")
+    .replace(/c(?=[ei])|z/g, "s")
+    .replace(/v/g, "b")
+    .replace(/ll/g, "y")
+    .replace(/h/g, "")
+    .replace(/(.)\1+/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** Normaliza teléfonos argentinos a solo dígitos, sin 0 ni 15 (ej: 03471-15687792 → 3471687792). */
 export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
