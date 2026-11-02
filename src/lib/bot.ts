@@ -215,7 +215,8 @@ async function markDelivered(chatId: number, id: number, paid: number | null) {
   const { order } = await changeStatus(id, { status: "entregado", paidOnPickup: paid ?? due });
   return sendMessage(
     chatId,
-    `📦 Orden <b>${ticket(order.id)}</b> entregada a ${h(order.client.name)}. Abonó ${money(order.paidOnPickup)}.` +
+    `📦 Orden <b>${ticket(order.id)}</b> entregada a ${h(order.client.name)}. ` +
+      (order.paidOnPickup > 0 ? `Abonó ${money(order.paidOnPickup)}.` : "Ya estaba todo pagado.") +
       (balance(order) > 0 ? `\n⚠️ Queda debiendo ${money(balance(order))}.` : ""),
   );
 }

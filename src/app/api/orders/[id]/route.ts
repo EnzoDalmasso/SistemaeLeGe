@@ -34,7 +34,8 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   const set: Partial<typeof orders.$inferInsert> = {};
   if (body.deposit !== undefined) set.deposit = body.deposit;
   if (body.notes !== undefined) set.notes = body.notes;
-  if (body.paidOnPickup !== undefined && !body.status) set.paidOnPickup = body.paidOnPickup;
+  if (body.paidOnPickup !== undefined && !body.status)
+    set.paidOnPickup = Math.min(body.paidOnPickup, Math.max(0, current.total - (body.deposit ?? current.deposit)));
   if (body.markNotified && !current.notifiedAt) set.notifiedAt = new Date();
   if (Object.keys(set).length) await db.update(orders).set(set).where(eq(orders.id, id));
 

@@ -135,7 +135,9 @@ export async function changeStatus(orderId: number, change: StatusChange) {
   if (change.status === "listo" && !order.readyAt) set.readyAt = now;
   if (change.status === "entregado") {
     set.deliveredAt = now;
-    if (change.paidOnPickup !== undefined) set.paidOnPickup = Math.max(0, Math.round(change.paidOnPickup));
+    // Al retirar solo se cobra el saldo: si pagó todo con la seña, no se vuelve a cobrar.
+    const due = Math.max(0, order.total - order.deposit);
+    set.paidOnPickup = Math.min(due, Math.max(0, Math.round(change.paidOnPickup ?? due)));
   }
   if (change.status !== "entregado" && order.status === "entregado") set.deliveredAt = null;
   await db.update(orders).set(set).where(eq(orders.id, orderId));

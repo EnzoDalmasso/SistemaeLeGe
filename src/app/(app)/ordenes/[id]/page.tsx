@@ -127,7 +127,7 @@ export default function OrderDetailPage() {
                         setDeliverOpen(true);
                       }}
                     >
-                      Entregar y cobrar
+                      {due > 0 ? "Entregar y cobrar" : "Entregar"}
                     </Button>
                     <a
                       href={o.whatsappUrl}
@@ -288,12 +288,16 @@ export default function OrderDetailPage() {
         <p className="mb-4 text-sm text-ink-soft">
           Importe {money(o.total)} − seña {money(o.deposit)} = <b>saldo {money(due)}</b>
         </p>
-        <Field label="¿Cuánto abona ahora?">
-          <div className="relative">
-            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">$</span>
-            <input className={`${inputCls} pl-7 text-lg`} inputMode="numeric" value={paid} onChange={(e) => setPaid(e.target.value)} autoFocus />
-          </div>
-        </Field>
+        {due > 0 ? (
+          <Field label="¿Cuánto abona ahora?" hint={`Como máximo el saldo: ${money(due)}`}>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted">$</span>
+              <input className={`${inputCls} pl-7 text-lg`} inputMode="numeric" value={paid} onChange={(e) => setPaid(e.target.value)} autoFocus />
+            </div>
+          </Field>
+        ) : (
+          <p className="rounded-xl bg-ok-soft px-3 py-2.5 text-sm font-medium text-ok">✓ Ya está todo pagado: no hay que cobrar nada.</p>
+        )}
         <div className="mt-5 flex gap-2">
           <Button variant="secondary" className="flex-1" onClick={() => setDeliverOpen(false)}>
             Volver
@@ -303,7 +307,7 @@ export default function OrderDetailPage() {
             className="flex-1"
             loading={busy === "deliver"}
             onClick={async () => {
-              const r = await patch({ status: "entregado", paidOnPickup: Number(paid.replace(/\D/g, "")) || 0 }, "deliver");
+              const r = await patch({ status: "entregado", paidOnPickup: due > 0 ? Math.min(due, Number(paid.replace(/\D/g, "")) || 0) : 0 }, "deliver");
               if (r) setDeliverOpen(false);
             }}
           >
