@@ -79,7 +79,8 @@ function otherGarment(seg: string, s: string, prices: PriceItem[]): ParsedItem {
 // Muletillas de los audios que van antes del nombre: "Hola, te dejo un pedido de Lucas Fernández".
 const NAME_FILLERS = [
   /^(?:hola|buenas(?:\s+(?:tardes|noches))?|buen\s+d[ií]a)\b[,.!\s]*/i,
-  /^(?:te\s+)?(?:dejo|paso|cargo|anot[aá])?\s*(?:un|el|una|la)?\s*(?:pedido|orden)\s*(?:de|para|a nombre de)?\s+/i,
+  // "te dejo un pedido de", "generame una orden nueva de", "anotame un pedido para"
+  /^(?:te\s+)?(?:dejo|paso|cargo|anot[aá]\w*|gener[aá]\w*|hac[eé]\w*|cre[aá]\w*|carg[aá]\w*|registr[aá]\w*)?\s*(?:un|el|una|la)?\s*(?:nuev[oa]\s+)?(?:pedido|orden)\s*(?:nuev[oa]\s*)?(?:de|para|a nombre de)?\s+/iu,
   /^(?:a nombre de|de parte de|para|cliente(?:\s+es)?|el cliente es|se llama|nombre)[:\s]+/i,
 ];
 
@@ -90,7 +91,9 @@ function cleanName(s: string) {
 }
 
 // Palabras que delatan que el segmento no es un nombre ("su teléfono es", "paga todo").
-const NOT_A_NAME = /\b(tel[eé]fono|tel|cel(?:ular)?|se[nñ]a|paga|pago|abona|total|kilos?|kg|plazas?|orden|lista)\b/i;
+// "dejó una" (lo que queda de "dejó una seña de 10 mil") tampoco. Límites con \p{L}: \b no reconoce la "ó".
+const NOT_A_NAME =
+  /(?<!\p{L})(tel[eé]fono|tel|cel(?:ular)?|se[nñ]a|paga|pago|abona|total|kilos?|kg|plazas?|orden|pedido|lista|dej[aoó]|trae|traj[oe]|llev[aoó]|nuev[oa])(?!\p{L})/iu;
 
 export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
   // "10.000 pesos": la palabra pesos sobra y se confundiría con un nombre.
@@ -151,7 +154,7 @@ export function parseByRules(text: string, prices: PriceItem[]): ParsedMessage {
 
   const nameParts: string[] = [];
   // "para Lucas Fernández un acolchado…": el nombre viene marcado y en mayúsculas (así lo escribe la transcripción).
-  const marked = rest.match(/(?:^|[\s,.])(?:[Pp]ara|[Aa] nombre de|[Dd]e parte de|[Cc]liente)\s+((?:\p{Lu}[\p{L}'’]+\s*){1,4})/u);
+  const marked = rest.match(/(?:^|[\s,.])(?:[Pp]ara|[Aa] nombre de|[Dd]e parte de|[Cc]liente|(?:[Pp]edido|[Oo]rden)(?:\s+nuev[oa])?\s+de)\s+((?:\p{Lu}[\p{L}'’]+\s*){1,4})/u);
   if (marked) nameParts.push(marked[1].trim());
 
   // "Enzo Dalmazo lleva una frazada…": lo que va antes del verbo es el cliente.

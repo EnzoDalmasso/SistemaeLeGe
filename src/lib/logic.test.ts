@@ -131,6 +131,8 @@ describe("parser por reglas", () => {
     "Para Lucas Fernández un acolchado de dos plazas, seña de 10.000 pesos, teléfono 3471223344.",
     "Cliente Lucas Fernández, teléfono 3471 223344. Un acolchado de dos plazas. Seña 10 mil.",
     "Buenas tardes. Lucas Fernández trajo un acolchado de dos plazas. Dejó 10.000 de seña. Su teléfono es 3471 223344.",
+    "Generame una orden nueva de Lucas Fernández 3471-2233-44, un acolchado de dos plazas, dejó una seña de 10 mil pesos.",
+    "Anotame un pedido para Lucas Fernández, 3471 223344, un acolchado de 2 plazas, deja una seña de 10 mil.",
   ])("nombre de cliente nuevo en audio transcripto: %s", (t) => {
     expect(parseByRules(t, PRICES)).toMatchObject({
       clientName: "Lucas Fernández",
