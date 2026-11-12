@@ -48,12 +48,11 @@ export default function ClientDetailPage() {
       : "No tiene órdenes.";
     if (!confirm(`¿Eliminar a ${c.name}? ${warning} No se puede deshacer.`)) return;
     setSaving(true);
-    setSaveError(null);
     try {
       await api(`/api/clients/${c.id}`, { method: "DELETE" });
       router.replace("/clientes");
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Error");
+      alert(e instanceof Error ? e.message : "No se pudo eliminar el cliente");
       setSaving(false);
     }
   }
@@ -68,9 +67,16 @@ export default function ClientDetailPage() {
         title={c.name}
         subtitle={`${c.phone ?? "Sin teléfono"} · cliente desde ${fmtDate(c.createdAt)}${c.telegramLinked ? " · recibe avisos automáticos" : ""}`}
         actions={
-          <Button variant="secondary" onClick={() => setEdit({ name: c.name, phone: c.phone ?? "", notes: c.notes ?? "" })}>
-            Editar
-          </Button>
+          <>
+            <Button variant="secondary" onClick={() => setEdit({ name: c.name, phone: c.phone ?? "", notes: c.notes ?? "" })}>
+              Editar
+            </Button>
+            {isAdmin && (
+              <Button variant="danger" loading={saving} onClick={remove}>
+                <IconTrash /> Eliminar
+              </Button>
+            )}
+          </>
         }
       />
       {c.notes && <p className="mb-4 rounded-xl bg-brand-soft/60 px-4 py-3 text-sm">📌 {c.notes}</p>}
@@ -156,11 +162,6 @@ export default function ClientDetailPage() {
             >
               Guardar
             </Button>
-            {isAdmin && (
-              <Button variant="danger" className="w-full" disabled={saving} onClick={remove}>
-                <IconTrash /> Eliminar cliente
-              </Button>
-            )}
           </div>
         )}
       </Modal>
