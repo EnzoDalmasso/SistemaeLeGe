@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { HttpError, idParam, parseBody, route } from "@/lib/api";
 import { db } from "@/lib/db";
-import { clients } from "@/lib/db/schema";
+import { clients, notifications, orders } from "@/lib/db/schema";
 import { normalizePhone } from "@/lib/format";
 import { findDuplicateClient, mergeClients } from "@/lib/orders";
 
@@ -39,3 +39,18 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
   if (duplicate) return { id: await mergeClients(id, duplicate.id), merged: true };
   return { id, merged: false };
 });
+
+/** Borra el cliente junto con sus órdenes (las prendas y los avisos de cada orden se borran en cascada). */
+export const DELETE = route<Ctx>(
+  async (_req, { params }) => {
+    const id = idParam((await params).id);
+    const deleted = await db.transaction(async (tx) => {
+      await tx.delete(notifications).where(eq(notifications.clientId, id));
+      await tx.delete(orders).where(eq(orders.clientId, id));
+      return tx.delete(clients).where(eq(clients.id, id)).returning({ id: clients.id });
+    });
+    if (!deleted.length) throw new HttpError(404, "Cliente no encontrado");
+    return { ok: true };
+  },
+  { admin: true },
+);

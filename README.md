@@ -41,7 +41,7 @@ También se pueden cargar prendas que no están en la lista, con un precio puntu
 
 ### Clientes e historial
 
-- Ficha de cada cliente con teléfono, notas y todas sus órdenes.
+- Ficha de cada cliente con teléfono, notas y todas sus órdenes. El administrador puede eliminar un cliente junto con sus órdenes.
 - Los teléfonos se normalizan: `03471 15 687792`, `+54 9 3471 687792` y `3471-687792` se guardan igual.
 - Al cargar una orden, el sistema busca si el cliente ya existe por teléfono o por cómo suena el nombre. Así "Dalmazo" encuentra a "Dalmasso" y no se duplican clientes.
 

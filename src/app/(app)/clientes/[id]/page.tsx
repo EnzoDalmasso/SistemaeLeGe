@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { IconTrash } from "@/components/icons";
+import { useUser } from "@/components/shell";
 import { Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Modal, PageHeader, StatusBadge } from "@/components/ui";
 import { api, useApi } from "@/lib/client";
 import { balance, fmtDate, itemLabel, money, ticket, type STATUS_LABELS } from "@/lib/format";
@@ -29,6 +31,7 @@ type ClientDetail = {
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const isAdmin = useUser()?.role === "admin";
   const { data: c, error, reload } = useApi<ClientDetail>(`/api/clients/${id}`);
   const [edit, setEdit] = useState<{ name: string; phone: string; notes: string } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -36,6 +39,24 @@ export default function ClientDetailPage() {
 
   if (error) return <ErrorBox>{error}</ErrorBox>;
   if (!c) return <Loading />;
+
+  async function remove() {
+    if (!c) return;
+    const orders = c.orders.length;
+    const warning = orders
+      ? `Se van a borrar también sus ${orders === 1 ? "1 orden" : `${orders} órdenes`} y los cobros dejan de figurar en el panel.`
+      : "No tiene órdenes.";
+    if (!confirm(`¿Eliminar a ${c.name}? ${warning} No se puede deshacer.`)) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api(`/api/clients/${c.id}`, { method: "DELETE" });
+      router.replace("/clientes");
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Error");
+      setSaving(false);
+    }
+  }
 
   const spent = c.orders.filter((o) => o.status !== "cancelado").reduce((s, o) => s + o.total, 0);
   const debt = c.orders.filter((o) => o.status === "entregado").reduce((s, o) => s + Math.max(balance(o), 0), 0);
@@ -135,6 +156,11 @@ export default function ClientDetailPage() {
             >
               Guardar
             </Button>
+            {isAdmin && (
+              <Button variant="danger" className="w-full" disabled={saving} onClick={remove}>
+                <IconTrash /> Eliminar cliente
+              </Button>
+            )}
           </div>
         )}
       </Modal>
