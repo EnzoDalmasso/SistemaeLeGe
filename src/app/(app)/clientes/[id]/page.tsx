@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button, Card, Empty, ErrorBox, Field, inputCls, Loading, Modal, PageHeader, StatusBadge } from "@/components/ui";
 import { api, useApi } from "@/lib/client";
@@ -28,6 +28,7 @@ type ClientDetail = {
 
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const { data: c, error, reload } = useApi<ClientDetail>(`/api/clients/${id}`);
   const [edit, setEdit] = useState<{ name: string; phone: string; notes: string } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -118,9 +119,13 @@ export default function ClientDetailPage() {
                 setSaving(true);
                 setSaveError(null);
                 try {
-                  await api(`/api/clients/${c.id}`, { method: "PATCH", json: { name: edit.name, phone: edit.phone || null, notes: edit.notes || null } });
+                  const r = await api<{ id: number; merged: boolean }>(`/api/clients/${c.id}`, {
+                    method: "PATCH",
+                    json: { name: edit.name, phone: edit.phone || null, notes: edit.notes || null },
+                  });
                   setEdit(null);
-                  reload();
+                  if (r.id !== c.id) router.replace(`/clientes/${r.id}`);
+                  else reload();
                 } catch (e) {
                   setSaveError(e instanceof Error ? e.message : "Error");
                 } finally {

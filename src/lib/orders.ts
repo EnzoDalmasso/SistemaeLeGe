@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "./db";
-import { clients, orderItems, orders, priceItems, users, type OrderStatus } from "./db/schema";
+import { clients, notifications, orderItems, orders, priceItems, users, type OrderStatus } from "./db/schema";
 import { balance, money, nameKey, normalizePhone, sameName, ticket } from "./format";
 import { HttpError } from "./api";
 import { sendToClient, type SendResult } from "./messaging";
@@ -30,6 +30,41 @@ export async function matchClient(name: string | null | undefined, phone: string
   const all = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients);
   const hit = all.find((c) => nameKey(c.name) === key && (!phone || !c.phone || c.phone === phone));
   return hit ? db.query.clients.findFirst({ where: eq(clients.id, hit.id) }) : undefined;
+}
+
+/** Otro cliente que, con estos datos, sería la misma persona (mismo criterio que matchClient). */
+export async function findDuplicateClient(id: number, name: string, phone: string | null) {
+  const key = nameKey(name);
+  const all = await db.select({ id: clients.id, name: clients.name, phone: clients.phone }).from(clients);
+  return all.find(
+    (c) =>
+      c.id !== id &&
+      ((phone && c.phone === phone && sameName(c.name, name)) ||
+        (key.length >= 3 && nameKey(c.name) === key && (!phone || !c.phone || c.phone === phone))),
+  );
+}
+
+/**
+ * Une dos fichas del mismo cliente: queda la más antigua, con los datos recién editados,
+ * y recibe las órdenes, avisos, notas y el Telegram vinculado de la otra.
+ */
+export async function mergeClients(editedId: number, otherId: number) {
+  const [keepId, dropId] = editedId < otherId ? [editedId, otherId] : [otherId, editedId];
+  return db.transaction(async (tx) => {
+    const [edited, keep, drop] = await Promise.all(
+      [editedId, keepId, dropId].map((id) => tx.query.clients.findFirst({ where: eq(clients.id, id) })),
+    );
+    if (!edited || !keep || !drop) throw new HttpError(404, "Cliente no encontrado");
+    const notes = [keep.notes, drop.notes].filter(Boolean).join("\n") || null;
+    await tx.update(orders).set({ clientId: keepId }).where(eq(orders.clientId, dropId));
+    await tx.update(notifications).set({ clientId: keepId }).where(eq(notifications.clientId, dropId));
+    await tx.delete(clients).where(eq(clients.id, dropId));
+    await tx
+      .update(clients)
+      .set({ name: edited.name, phone: edited.phone, notes, telegramChatId: keep.telegramChatId ?? drop.telegramChatId })
+      .where(eq(clients.id, keepId));
+    return keepId;
+  });
 }
 
 /** Busca el cliente por id, por teléfono o por nombre; si no existe lo crea. */

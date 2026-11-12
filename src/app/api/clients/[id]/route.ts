@@ -4,6 +4,7 @@ import { HttpError, idParam, parseBody, route } from "@/lib/api";
 import { db } from "@/lib/db";
 import { clients } from "@/lib/db/schema";
 import { normalizePhone } from "@/lib/format";
+import { findDuplicateClient, mergeClients } from "@/lib/orders";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -31,7 +32,10 @@ export const PATCH = route<Ctx>(async (req, { params }) => {
     .update(clients)
     .set({ ...body, ...(body.phone !== undefined ? { phone: normalizePhone(body.phone) } : {}) })
     .where(eq(clients.id, id))
-    .returning({ id: clients.id });
+    .returning({ id: clients.id, name: clients.name, phone: clients.phone });
   if (!updated) throw new HttpError(404, "Cliente no encontrado");
-  return updated;
+  // Si con los datos nuevos queda igual a otro cliente, es la misma persona: se unen las dos fichas.
+  const duplicate = await findDuplicateClient(id, updated.name, updated.phone);
+  if (duplicate) return { id: await mergeClients(id, duplicate.id), merged: true };
+  return { id, merged: false };
 });
